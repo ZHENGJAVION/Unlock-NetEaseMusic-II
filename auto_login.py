@@ -13,14 +13,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from retrying import retry
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(asctime)s %(message)s')
 
-
 def get_chrome_version():
-    """
-    获取系统中 Chrome 浏览器的版本号，例如：135.0.7049
-    """
     try:
         output = subprocess.check_output(
             r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --version', shell=True)
@@ -34,19 +29,10 @@ def get_chrome_version():
         logging.error(f"❌ Unable to get Chrome version: {e}")
     return None
 
-
 @retry(wait_fixed=3000, stop_max_attempt_number=3)
 def get_driver_path(version):
-    """
-    带重试的方式安装 chromedriver
-    """
-    try:
-        logging.info(f"Downloading chromedriver for version: {version}")
-        return ChromeDriverManager(version=version).install()
-    except Exception as e:
-        logging.error(f"❌ Failed to install chromedriver: {e}")
-        raise
-
+    logging.info(f"Downloading chromedriver for version: {version}")
+    return ChromeDriverManager(version=version).install()
 
 @retry(wait_random_min=5000, wait_random_max=10000, stop_max_attempt_number=3)
 def enter_iframe(browser):
@@ -64,44 +50,42 @@ def enter_iframe(browser):
         raise
     return browser
 
-
 @retry(wait_random_min=1000, wait_random_max=3000, stop_max_attempt_number=5)
 def extension_login():
     chrome_options = webdriver.ChromeOptions()
 
-    logging.info("Load Chrome extension NetEaseMusicWorldPlus")
-    extension_path = 'NetEaseMusicWorldPlus.crx'
-    if not os.path.exists(extension_path):
-        logging.error(f"❌ Extension not found: {extension_path}")
-        return
-    chrome_options.add_extension(extension_path)
+    logging.info("Adding Chrome options for CI environment")
+    chrome_options.add_argument("--headless=new")  # 使用新版 headless，兼容性更好
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
 
-    # 获取 Chrome 安装版本
+    logging.info("Load Chrome extension NetEaseMusicWorldPlus")
+    chrome_options.add_extension('NetEaseMusicWorldPlus.crx')
+
     chrome_version = get_chrome_version()
     if not chrome_version:
         logging.error("❌ Failed to detect Chrome version, cannot continue.")
         return
 
-    # 获取匹配的 chromedriver 路径
     try:
         driver_path = get_driver_path(chrome_version)
         service = Service(driver_path)
     except Exception:
-        logging.error("❌ Giving up due to repeated chromedriver install failure.")
+        logging.error("❌ Failed to install compatible chromedriver.")
         return
 
-    # 启动 Chrome 浏览器
-    logging.info("Launching Chrome WebDriver")
+    logging.info("Launching Chrome WebDriver...")
     try:
         browser = webdriver.Chrome(service=service, options=chrome_options)
     except Exception as e:
-        logging.error(f"❌ Failed to start Chrome WebDriver: {e}")
+        logging.error(f"❌ Failed to start Chrome: {e}")
         return
 
     browser.implicitly_wait(20)
 
     try:
-        logging.info("Opening NetEase Music site")
+        logging.info("Opening NetEase Music")
         browser.get('https://music.163.com')
 
         logging.info("Injecting Cookie to skip login")
@@ -112,18 +96,28 @@ def extension_login():
 
         browser.refresh()
         time.sleep(5)
-        logging.info("✅ Cookie login successful")
+        logging.info("✅ Cookie login injected and refreshed")
 
-        logging.info("Unlock finished")
-        time.sleep(10)
+        # 可选检查是否登录成功
+        # 可根据 DOM 结构替换 class 名
+        try:
+            WebDriverWait(browser, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "avatar"))
+            )
+            logging.info("✅ Login confirmed by UI element")
+        except Exception:
+            logging.warning("⚠️ Could not confirm login via avatar element")
+            browser.save_screenshot("login_check_failed.png")
+
+        logging.info("Unlock completed, closing browser...")
+        time.sleep(5)
 
     except Exception as e:
-        logging.error(f"❌ Runtime error during script: {e}")
+        logging.error(f"❌ Error during script: {e}")
         browser.save_screenshot("runtime_error.png")
     finally:
         browser.quit()
         logging.info("Browser closed.")
-
 
 if __name__ == '__main__':
     try:
