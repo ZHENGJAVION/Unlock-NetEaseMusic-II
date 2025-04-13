@@ -2,7 +2,7 @@ name: Unlock-NetEaseMusic
 
 on:
   schedule:
-    - cron: "37 */8 * * *" # Runs every 8 hours
+    - cron: "37 */8 * * *" # 每 8 小时运行一次
   workflow_dispatch:
 
 jobs:
@@ -13,29 +13,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Install Chrome & Chromedriver
+      - name: Install Chrome (latest)
         run: |
-          echo "Installing Google Chrome and Chromedriver..."
+          echo "Installing Google Chrome..."
           choco install googlechrome -y
-          choco install chromedriver -y --force
-          echo "✅ Chrome & Chromedriver installed successfully."
+          echo "✅ Google Chrome installed."
 
-      - name: Debug Chrome and Chromedriver
-        shell: pwsh # 强制使用 PowerShell
+      - name: Show installed Chrome version
+        shell: pwsh
         run: |
-          echo "Checking Chrome version..."
+          echo "Checking installed Chrome version..."
           if (Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe") {
               & "C:\Program Files\Google\Chrome\Application\chrome.exe" --version
           } else {
               echo "❌ Chrome not found!"
+              exit 1
           }
 
-          echo "Checking Chromedriver version..."
-          if (Get-Command chromedriver -ErrorAction SilentlyContinue) {
-              chromedriver --version
-          } else {
-              echo "❌ Chromedriver not found!"
-          }
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
       - name: Install Python dependencies
         run: |
@@ -48,4 +46,15 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           PYTHONIOENCODING: utf-8
           PYTHONLEGACYWINDOWSSTDIO: utf-8
-        run: python auto_login.py
+        run: |
+          echo "Running auto_login.py..."
+          python auto_login.py || echo "⚠️ Script failed, but continuing for artifact upload"
+
+      - name: Upload debug screenshots (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: |
+            debug_iframe.png
+            runtime_error.png
+          if-no-files-found: ignore
